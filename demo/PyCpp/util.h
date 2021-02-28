@@ -3,3 +3,4 @@
 namespace ipc {
 	PyObject * PyByteArray_FromString_WithoutCopy(char *bytes, Py_ssize_t size);
 }
+

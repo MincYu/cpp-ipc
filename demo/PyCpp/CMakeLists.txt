@@ -12,12 +12,14 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/src)
 
 if(UNIX)
-  file(GLOB SRC_FILES ${CMAKE_SOURCE_DIR}/src/libipc/platform/*_linux.cpp)
+  file(GLOB SRC_FILES 
+    ${CMAKE_SOURCE_DIR}/src/libipc/platform/*_linux.cpp
+    ${CMAKE_SOURCE_DIR}/demo/PyCpp/Client.cpp
+    ${CMAKE_SOURCE_DIR}/demo/PyCpp/util.cpp)
 else()
   file(GLOB SRC_FILES ${CMAKE_SOURCE_DIR}/src/libipc/platform/*_win.cpp)
 endif()
 aux_source_directory(${CMAKE_SOURCE_DIR}/src SRC_FILES)
-aux_source_directory(${CMAKE_SOURCE_DIR}/demo/PyCpp SRC_FILES)
 file(GLOB HEAD_FILES
   ${CMAKE_SOURCE_DIR}/include/libipc/*.h
   ${CMAKE_SOURCE_DIR}/src/libipc/*.h
@@ -34,4 +36,5 @@ if(NOT MSVC)
       pthread
       $<$<NOT:$<STREQUAL:${CMAKE_SYSTEM_NAME},Windows>>:rt>)
 endif()
+
 

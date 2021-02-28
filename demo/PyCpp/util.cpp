@@ -1,4 +1,6 @@
 #include "util.h"
+#include <iostream>
+
 namespace ipc {
         
     PyObject *
@@ -27,12 +29,6 @@ namespace ipc {
             alloc = 0;
         }
         else {
-            alloc = size + 1;
-            // arrayObject->ob_bytes = PyObject_Malloc(alloc);
-            if (arrayObject->ob_bytes == NULL) {
-                Py_DECREF(arrayObject);
-                return PyErr_NoMemory();
-            }
             arrayObject->ob_bytes = bytes;
         }
         Py_SIZE(arrayObject) = size;
@@ -44,3 +40,4 @@ namespace ipc {
     }       
 
 }
+

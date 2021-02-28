@@ -1,12 +1,12 @@
-
 #include <signal.h>
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <thread>
 #include <chrono>
 #include <cstddef>
-
 #include "libipc/ipc.h"
+#include <atomic>
 #include "libipc/shm.h"
 #include "capo/random.hpp"
 #include "util.h"
@@ -27,7 +27,19 @@ capo::random<> rand__{
 
 ipc::channel shared_chan { name__, ipc::sender | ipc::receiver };
 
+std::atomic<bool> is_quit__{ false };
+
 char * kvs_client(char id, bool is_read, string info) {
+
+    auto exit = [](int) {
+        is_quit__.store(true, std::memory_order_release);
+        shared_chan.disconnect();
+    };
+    ::signal(SIGINT  , exit);
+    ::signal(SIGABRT , exit);
+    ::signal(SIGSEGV , exit);
+    ::signal(SIGTERM , exit);
+    ::signal(SIGHUP  , exit);
     
     auto client_id = 2 + id;
     std::cout << "Launching client " << client_id << " ...\n";
@@ -55,9 +67,9 @@ char * kvs_client(char id, bool is_read, string info) {
         req += std::to_string(shm_size);
         int data_len = stoi(info);
         auto shm_id = acquire(key_name.c_str(), shm_size);
-        auto shm_ptr = (char *) get_mem(shm_id, nullptr);
-        memset(shm_ptr, '1', data_len);
-        shm_ptr[data_len] = '\0';
+        auto shm_ptr_ = (char *) get_mem(shm_id, nullptr);
+        memset(shm_ptr_, '1', data_len);
+        shm_ptr_[data_len] = '\0';
     }
 
     auto ready_stamp = std::chrono::system_clock::now();
@@ -73,7 +85,7 @@ char * kvs_client(char id, bool is_read, string info) {
 
     // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
     if (str == nullptr) {
-        char * err = "Ack error";
+        char *err = "Ack error";
         return err;
     }
     if (client_id != (int) str[0]){
@@ -123,9 +135,6 @@ char * kvs_client(char id, bool is_read, string info) {
     }
 }
 
-
-
-
 PyObject* WrappClient(PyObject* self, PyObject *args)
 {
     int id;
@@ -139,8 +148,18 @@ PyObject* WrappClient(PyObject* self, PyObject *args)
 
 }
 
+PyObject* WrappFree(PyObject* self, PyObject *args)
+{
+    PyByteArrayObject * toFree  = (PyByteArrayObject *) PyTuple_GET_ITEM(args, 0);
+    toFree->ob_bytes = NULL;
+
+    return Py_None;
+
+}
+
 static PyMethodDef client_methods[] = {
  {"kvs_client", WrappClient, METH_VARARGS, "something"},
+ {"kvs_free", WrappFree, METH_VARARGS},
  {NULL, NULL}
 };
 
@@ -158,4 +177,5 @@ PyMODINIT_FUNC PyInit_libPyCpp()
 }
 
 }
+
 
