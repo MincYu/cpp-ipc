@@ -9,7 +9,9 @@ endif()
 include_directories(
     ${CMAKE_SOURCE_DIR}/include 
     ${CMAKE_SOURCE_DIR}/3rdparty
-    ${CMAKE_SOURCE_DIR}/src)
+    ${CMAKE_SOURCE_DIR}/src
+    /usr/local/lib/python3.6/dist-packages/numpy/core/include
+    /usr/include/python3.6)
 
 if(UNIX)
   file(GLOB SRC_FILES 

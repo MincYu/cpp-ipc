@@ -107,7 +107,7 @@ namespace {
                 else {
                     auto shm_ptr = (char *) get_mem(shm_id, nullptr);
                     // auto val_size = strlen(shm_ptr);
-                    // std::cout << "shm_size " << size_len << " val_size " << val_size << "\n";
+                    std::cout << "shm_size " << size_len << " " << shm_ptr[20] << "\n";
 
                     key_val_map[key_name] = shm_ptr;
                     key_len_map[key_name] = size_len;
