@@ -3,7 +3,9 @@ import numpy as np
 def client(i, read, info, dStruc):
     s = libPyCpp.kvs_client(i, read, info, dStruc)
     print(s)
-    a = libPyCpp.kvs_free(s)
+    if dStruc == 1 and s!=None:
+        print("explicitly")
+        a = libPyCpp.kvs_free(s)
 
     return
 client(1, 0, "30", 0)
