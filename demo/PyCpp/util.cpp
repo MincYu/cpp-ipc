@@ -42,11 +42,10 @@ namespace ipc {
     PyObject *
     PyArray_FromIntArray(int *rind, Py_ssize_t size) {
         import_array();
-        std::cout << "size of the int array is " << size << std::endl;
         npy_intp dim[1];
         dim[0] = size;
-        PyArrayObject *mat_1 = (PyArrayObject*) PyArray_SimpleNewFromData(1, dim, NPY_INT, (char*) rind);
-        return PyArray_Return(mat_1);
+        PyArrayObject *mat = (PyArrayObject*) PyArray_SimpleNewFromData(1, dim, NPY_INT, (char*) rind);
+        return PyArray_Return(mat);
     }
 
 }
