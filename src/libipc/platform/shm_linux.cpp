@@ -170,3 +170,4 @@ void remove(char const * name) {
 
 } // namespace shm
 } // namespace ipc
+

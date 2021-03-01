@@ -1,4 +1,6 @@
 #include "util.h"
+#include <iostream>
+#include <numpy/arrayobject.h>
 namespace ipc {
         
     PyObject *
@@ -27,12 +29,6 @@ namespace ipc {
             alloc = 0;
         }
         else {
-            alloc = size + 1;
-            // arrayObject->ob_bytes = PyObject_Malloc(alloc);
-            if (arrayObject->ob_bytes == NULL) {
-                Py_DECREF(arrayObject);
-                return PyErr_NoMemory();
-            }
             arrayObject->ob_bytes = bytes;
         }
         Py_SIZE(arrayObject) = size;
@@ -41,6 +37,16 @@ namespace ipc {
         arrayObject->ob_exports = 0;
 
         return (PyObject *)arrayObject;
-    }       
+    }
+
+    PyObject *
+    PyArray_FromIntArray(int *rind, Py_ssize_t size) {
+        import_array();
+        npy_intp dim[1];
+        dim[0] = size;
+        PyArrayObject *mat = (PyArrayObject*) PyArray_SimpleNewFromData(1, dim, NPY_INT, (char*) rind);
+        return PyArray_Return(mat);
+    }
 
 }
+

@@ -1,15 +1,16 @@
-
 #include <signal.h>
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <thread>
 #include <chrono>
 #include <cstddef>
-
 #include "libipc/ipc.h"
+#include <atomic>
 #include "libipc/shm.h"
 #include "capo/random.hpp"
 #include "util.h"
+#include <numpy/arrayobject.h>
 
 using string = std::string;
 
@@ -27,7 +28,18 @@ capo::random<> rand__{
 
 ipc::channel shared_chan { name__, ipc::sender | ipc::receiver };
 
-char * kvs_client(char id, bool is_read, string info) {
+std::atomic<bool> is_quit__{ false };
+
+void * kvs_client(char id, bool is_read, string info, int *finalSize, int dataStruc) {
+    auto exit = [](int) {
+        is_quit__.store(true, std::memory_order_release);
+        shared_chan.disconnect();
+    };
+    ::signal(SIGINT  , exit);
+    ::signal(SIGABRT , exit);
+    ::signal(SIGSEGV , exit);
+    ::signal(SIGTERM , exit);
+    ::signal(SIGHUP  , exit);
     
     auto client_id = 2 + id;
     std::cout << "Launching client " << client_id << " ...\n";
@@ -51,13 +63,20 @@ char * kvs_client(char id, bool is_read, string info) {
         req.push_back(req_id);
         req.push_back((char) key_name.size());
         req += key_name;
-        auto shm_size = stoi(info) + 1;
+        std::size_t shm_size = stoi(info) + 1;
         req += std::to_string(shm_size);
         int data_len = stoi(info);
-        auto shm_id = acquire(key_name.c_str(), shm_size);
-        auto shm_ptr = (char *) get_mem(shm_id, nullptr);
-        memset(shm_ptr, '1', data_len);
-        shm_ptr[data_len] = '\0';
+        if(dataStruc == 0) {
+            auto shm_id = acquire(key_name.c_str(), shm_size);
+            int * shm_ptr = (int *) get_mem(shm_id, nullptr);
+            for (int i = 0; i < shm_size; i++) shm_ptr[i] = i;
+        }
+        else {
+            auto shm_id = acquire(key_name.c_str(), shm_size);
+            auto shm_ptr = (char *) get_mem(shm_id, nullptr);
+            memset(shm_ptr, '1', data_len);
+            shm_ptr[data_len] = '\0';
+        }
     }
 
     auto ready_stamp = std::chrono::system_clock::now();
@@ -73,44 +92,53 @@ char * kvs_client(char id, bool is_read, string info) {
 
     // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
     if (str == nullptr) {
-        char * err = "Ack error";
-        return err;
+        char *err = "Ack error";
+        std::cout << err << std::endl;
+        return NULL;
     }
     if (client_id != (int) str[0]){
         char * err = "Not my ack";
-        return err;
+        std::cout << err << std::endl;
+        return NULL;
     }  
     if (str[1] != req_id) {
         char * err = "request id doesn't match";
-        return err;
+        std::cout << err << std::endl;
+        return NULL;
     }
     auto ack_stamp = std::chrono::system_clock::now();
 
         
     if (is_read){
         auto size_len = stoi(string(str + 3));
-        auto shm_id = acquire(key_name.c_str(), size_len);
-        auto shm_ptr = (char *) get_mem(shm_id, nullptr);
+        auto shm_id = acquire(key_name.c_str(), size_len, open);
+        if (dataStruc == 0) {
+            auto shm_ptr = (int *) get_mem(shm_id, nullptr);
+            * finalSize = size_len;
+            return shm_ptr;
+        } else {
+            auto shm_ptr = (char *) get_mem(shm_id, nullptr);
 
-        auto ptr_stamp = std::chrono::system_clock::now();
+            auto ptr_stamp = std::chrono::system_clock::now();
 
-        auto val_size = strlen(shm_ptr);
-        auto val_stamp = std::chrono::system_clock::now();
+            auto val_size = strlen(shm_ptr);
+            auto val_stamp = std::chrono::system_clock::now();
 
-        auto ready_time = std::chrono::duration_cast<std::chrono::microseconds>(ready_stamp - start_stamp).count();
-        auto ack_time = std::chrono::duration_cast<std::chrono::microseconds>(ack_stamp - ready_stamp).count();
-        auto ptr_time = std::chrono::duration_cast<std::chrono::microseconds>(ptr_stamp - ack_stamp).count();
-        auto val_time = std::chrono::duration_cast<std::chrono::microseconds>(val_stamp - ptr_stamp).count();
+            auto ready_time = std::chrono::duration_cast<std::chrono::microseconds>(ready_stamp - start_stamp).count();
+            auto ack_time = std::chrono::duration_cast<std::chrono::microseconds>(ack_stamp - ready_stamp).count();
+            auto ptr_time = std::chrono::duration_cast<std::chrono::microseconds>(ptr_stamp - ack_stamp).count();
+            auto val_time = std::chrono::duration_cast<std::chrono::microseconds>(val_stamp - ptr_stamp).count();
 
-        std::cout << "Receive Get " << key_name << ", val_size: " << val_size
-                                                << ", shm_size: " << size_len
-                                                << ", ready_time: " << ready_time
-                                                << ", ack_time: " << ack_time
-                                                << ", ptr_time: " << ptr_time
-                                                << ", val_time: " << val_time
-                                                <<"\n";
-
-        return shm_ptr;
+            std::cout << "Receive Get " << key_name << ", val_size: " << val_size
+                                                    << ", shm_size: " << size_len
+                                                    << ", ready_time: " << ready_time
+                                                    << ", ack_time: " << ack_time
+                                                    << ", ptr_time: " << ptr_time
+                                                    << ", val_time: " << val_time
+                                                    <<"\n";
+            * finalSize = size_len;
+            return shm_ptr;
+        }
     } else {
         auto ready_time = std::chrono::duration_cast<std::chrono::microseconds>(ready_stamp - start_stamp).count();
         auto ack_time = std::chrono::duration_cast<std::chrono::microseconds>(ack_stamp - ready_stamp).count();
@@ -119,28 +147,45 @@ char * kvs_client(char id, bool is_read, string info) {
                                                 << ", ack_time: " << ack_time 
                                                 <<"\n";
         char * put_Msg = "Receive Put";
-        return put_Msg;
+        std::cout << put_Msg << std::endl;
+        return NULL;
     }
 }
 
-
-
-
 PyObject* WrappClient(PyObject* self, PyObject *args)
 {
-    int id;
-    int is_read;
+    int id, is_read;
     const char * info;
-    if(!PyArg_ParseTuple(args, "iiz", &id, &is_read, &info)){
+    int dataStruc = 0; // 1 represent bytearray; 0 represent numpy array
+    
+    if(!PyArg_ParseTuple(args, "iizi", &id, &is_read, &info, &dataStruc)){
         return NULL;
     }
-    char * resp = kvs_client(id, is_read, info);
-    return PyByteArray_FromString_WithoutCopy(resp, strlen(resp));
+    int finalSize = 0;
+    void * resp = kvs_client(id, is_read, info, &finalSize, dataStruc);
+    if (resp == NULL) return Py_None;
+    if (dataStruc == 0) {
+        int * resp_ = (int *) resp;
+        return PyArray_FromIntArray(resp_, finalSize);
+    } else {
+        char * resp_ = (char *) resp;
+        return PyByteArray_FromString_WithoutCopy(resp_, finalSize);
+    }
+
+}
+
+PyObject* WrappFree(PyObject* self, PyObject *args)
+{
+    PyByteArrayObject * toFree  = (PyByteArrayObject *) PyTuple_GET_ITEM(args, 0);
+    toFree->ob_bytes = NULL;
+
+    return Py_None;
 
 }
 
 static PyMethodDef client_methods[] = {
  {"kvs_client", WrappClient, METH_VARARGS, "something"},
+ {"kvs_free", WrappFree, METH_VARARGS},
  {NULL, NULL}
 };
 
@@ -158,4 +203,5 @@ PyMODINIT_FUNC PyInit_libPyCpp()
 }
 
 }
+
 

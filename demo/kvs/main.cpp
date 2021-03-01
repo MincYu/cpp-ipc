@@ -367,6 +367,7 @@ int main(int argc, char ** argv) {
         bool is_read = std::stoi(string{argv[3]}) == 1;
         string info{ argv[4] };
         kvs_client(id, is_read, info);
+	kvs_client(id, is_read, info);
     }
     else if (std::string{ argv[1] } == mode_t__) {
         int len = std::stoi(string{argv[2]});
