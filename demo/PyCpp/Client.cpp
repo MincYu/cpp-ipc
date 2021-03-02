@@ -34,6 +34,7 @@ namespace ipc {
     }
 
     PyObject * WrappGetNp(PyObject* self, PyObject *args) {
+
         int id;
         const char * info_;
         int finalSize = 0; // dataStruc: 1 represent bytearray; 0 represent numpy array
@@ -87,6 +88,7 @@ namespace ipc {
     }
 
     PyObject * WrappGetBt(PyObject* self, PyObject *args) {
+        auto start_stamp = std::chrono::system_clock::now();
         int id;
         const char * info_;
         
@@ -105,12 +107,15 @@ namespace ipc {
         req.push_back(req_id);
         req.push_back((char) key_name.size());
         req += key_name;
+        auto send_stamp = std::chrono::system_clock::now();
         while (!shared_chan.send(req)) {
             // waiting for connection
             shared_chan.wait_for_recv(2);
         }
+        auto connection_stamp = std::chrono::system_clock::now();
         auto dd = shared_chan.recv();
         auto str = static_cast<char*>(dd.data());
+        auto receive_stamp = std::chrono::system_clock::now();
         
         // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
         if (str == nullptr) {
@@ -125,18 +130,31 @@ namespace ipc {
             std::cout << "request id doesn't match" << std::endl;
             return Py_None;
         }
+        
         auto size_len = stoi(string(str + 3));
+        auto getsize_stamp = std::chrono::system_clock::now();
+
         auto shm_id = acquire(key_name.c_str(), size_len, open);
         auto shm_ptr = (char *) get_mem(shm_id, nullptr);
-        auto val_size = strlen((char *) shm_ptr);
+        auto openshm_stamp = std::chrono::system_clock::now();        
 
-        std::cout << "----Receive Get" << std::endl;
-
-        auto start_stamp = std::chrono::system_clock::now();
         auto bArray = PyByteArray_FromString_WithoutCopy(shm_ptr, size_len - 1);
         auto trans_stamp = std::chrono::system_clock::now();
-        auto trans_time = std::chrono::duration_cast<std::chrono::microseconds>(trans_stamp - start_stamp).count();
-        std::cout << "transfer from char * to python bytearray using " << trans_time << " ms\n";
+
+        auto ready_time = std::chrono::duration_cast<std::chrono::microseconds>(send_stamp - start_stamp).count();
+        auto conn_time = std::chrono::duration_cast<std::chrono::microseconds>(connection_stamp - start_stamp).count();
+        auto receive_time = std::chrono::duration_cast<std::chrono::microseconds>(receive_stamp - connection_stamp).count();
+        auto getsize_time = std::chrono::duration_cast<std::chrono::microseconds>(getsize_stamp - receive_stamp).count();
+        auto openshm_time = std::chrono::duration_cast<std::chrono::microseconds>(openshm_stamp - getsize_stamp).count();
+        auto trans_time = std::chrono::duration_cast<std::chrono::microseconds>(trans_stamp - openshm_stamp).count();
+        std::cout << "----Receive Get" << std::endl;
+        std::cout << "ready time                                     " << ready_time << " us\n";
+        std::cout << "connection time                                " << conn_time << " us\n";
+        std::cout << "receive message from server using              " << receive_time << " us\n";
+        std::cout << "get size using                                 " << getsize_time << " us\n";
+        std::cout << "open shared memory pointer using               " << openshm_time << " us\n";
+        std::cout << "transfer from char * to python bytearray using " << trans_time << " us\n";
+
         
         return bArray;
     }

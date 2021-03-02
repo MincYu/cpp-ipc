@@ -1,4 +1,5 @@
 import libPyCpp
+import time
 import numpy as np
 
 def put_npArray(id, keyInfo):
@@ -49,15 +50,24 @@ def get(id, keyInfo, dataStruc):
 
 
 
-put(1, "256", 0)
-rs = get(1, "256", 0)
-put(1, "1024", 1)
-rs2 = get(1, "1024", 1)
-
+# put(1, "256", 0)
+# rs = get(1, "256", 0)
+print("1kb")
+put(1, "1000", 1)
+start = time.time()
+rs2 = get(1, "1000", 1)
+end = time.time()
+print("1 KB get using  ", end-start)
+print("10Mb")
+put(1, "10000000", 1)
+start = time.time()
+rs1 = get(1, "10000000", 1)
+end = time.time()
+print("10 MB get using ", end-start)
 
 """
 require explicitly free bytearray object. 
 """
 a = libPyCpp.kvs_free(rs2)
-
+a = libPyCpp.kvs_free(rs1)
 
