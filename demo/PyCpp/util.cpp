@@ -1,5 +1,6 @@
 #include "util.h"
 #include <iostream>
+#include <chrono>
 #include <numpy/arrayobject.h>
 namespace ipc {
         
@@ -39,14 +40,8 @@ namespace ipc {
         return (PyObject *)arrayObject;
     }
 
-    PyObject *
-    PyArray_FromIntArray(int *rind, Py_ssize_t size) {
-        import_array();
-        npy_intp dim[1];
-        dim[0] = size;
-        PyArrayObject *mat = (PyArrayObject*) PyArray_SimpleNewFromData(1, dim, NPY_INT, (char*) rind);
-        return PyArray_Return(mat);
-    }
+
 
 }
+
 
