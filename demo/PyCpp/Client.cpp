@@ -11,6 +11,7 @@
 #include "capo/random.hpp"
 #include "util.h"
 #include <numpy/arrayobject.h>
+#include <unordered_map>
 
 
 using string = std::string;
@@ -24,10 +25,16 @@ namespace ipc {
     };
     std::atomic<bool> is_quit__{ false };
     constexpr char const name__  [] = "ipc-kvs";
+    // a channel for server that is multi write (from different clients) and single read;
+    // cpp-ipc doesn't support multi writer and single reader
+    // use multi writer and multi reader instead, which will not cause error since there is only one receiver
     ipc::channel shared_chan { name__, ipc::sender | ipc::receiver };
 
-    PyObject *
-    PyArray_FromIntArray(int *rind, Py_ssize_t size) {
+    // each client has a specific channel connecting to the server
+    using msg_que_t = ipc::chan<ipc::relat::single, ipc::relat::single, ipc::trans::unicast>;
+    std::unordered_map<string, msg_que_t *> client_chans_map;
+
+    PyObject * PyArray_FromIntArray(int *rind, Py_ssize_t size) {
         npy_intp dim[1] = {size};
         PyArrayObject *mat = (PyArrayObject*) PyArray_SimpleNewFromData(1, dim, NPY_INT, (char*) rind);
         return PyArray_Return(mat);
@@ -54,11 +61,20 @@ namespace ipc {
         req.push_back(req_id);
         req.push_back((char) key_name.size());
         req += key_name;
+        if(client_chans_map.find(key_name) == client_chans_map.end()) {
+                msg_que_t * que__ = new  msg_que_t(key_name.c_str());
+                client_chans_map[key_name] = que__;
+                que__->disconnect();
+        }
+        int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
+
         while (!shared_chan.send(req)) {
             // waiting for connection
             shared_chan.wait_for_recv(2);
         }
-        auto dd = shared_chan.recv();
+
+        auto dd = client_chans_map[key_name]->recv();
+        client_chans_map[key_name]->disconnect();
         auto str = static_cast<char*>(dd.data());
         
         // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
@@ -108,12 +124,21 @@ namespace ipc {
         req.push_back((char) key_name.size());
         req += key_name;
         auto send_stamp = std::chrono::system_clock::now();
+        if(client_chans_map.find(key_name) == client_chans_map.end()) {
+                msg_que_t * que__ = new  msg_que_t(key_name.c_str());
+                client_chans_map[key_name] = que__;
+                que__->disconnect();
+        }
+        int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
+
         while (!shared_chan.send(req)) {
             // waiting for connection
             shared_chan.wait_for_recv(2);
         }
         auto connection_stamp = std::chrono::system_clock::now();
-        auto dd = shared_chan.recv();
+        
+        auto dd = client_chans_map[key_name]->recv();
+        client_chans_map[key_name]->disconnect();
         auto str = static_cast<char*>(dd.data());
         auto receive_stamp = std::chrono::system_clock::now();
         
@@ -222,11 +247,23 @@ namespace ipc {
         std::size_t shm_size = stoi(info) + 1;
         req += std::to_string(shm_size);
         int data_len = stoi(info);
+
+        // load the receive channel before sending request
+        // avoid the server open the channel and find there is no receiver
+        if(client_chans_map.find(key_name) == client_chans_map.end()) {
+                msg_que_t * que__ = new  msg_que_t(key_name.c_str());
+                client_chans_map[key_name] = que__;
+                que__->disconnect();
+        }
+        int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
+
         while (!shared_chan.send(req)) {
             // waiting for connection
             shared_chan.wait_for_recv(2);
         }
-        auto dd = shared_chan.recv();
+        
+        auto dd = client_chans_map[key_name]->recv();
+        client_chans_map[key_name]->disconnect();
         auto str = static_cast<char*>(dd.data());
 
         // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
@@ -247,7 +284,7 @@ namespace ipc {
             
     }
 
-
+    
     static PyMethodDef client_methods[] = {
     {"kvs_free", WrappFree, METH_VARARGS},
     {"kvs_ShmPtr_npArray", WrappShmNp, METH_VARARGS},

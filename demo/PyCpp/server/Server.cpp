@@ -25,6 +25,9 @@ namespace {
     constexpr char const name__  [] = "ipc-kvs";
     ipc::channel shared_chan { name__, ipc::sender | ipc::receiver };
     std::atomic<bool> is_quit__{ false };
+    using msg_que_t = ipc::chan<ipc::relat::single, ipc::relat::single, ipc::trans::unicast>;
+    map<string, msg_que_t *> client_chans_map;
+    
     void kvs_server() {
         map<string, char *> key_val_map;
         map<string, uint32_t> key_len_map;
@@ -120,12 +123,32 @@ namespace {
 
             auto req_type = is_read ? "Get" : "Put";
             std::cout << "Handled " << req_type << " " << key_name << ", handling_time: " << handling_time << "\n";
-
-            // try sending ack
-            while (!shared_chan.send(resp)) {
-                // waiting for connection
-                shared_chan.wait_for_recv(2);
+            // msg_que_t que__{ key_name.c_str() };
+            if(client_chans_map.find(key_name) == client_chans_map.end()) {
+                msg_que_t * que__ = new  msg_que_t(key_name.c_str());
+                client_chans_map[key_name] = que__;
             }
+            
+            if (!client_chans_map[key_name]->reconnect(ipc::sender)) {
+                std::cerr << __func__ << ": connect failed.\n";
+            } else {
+                int wait = 1;
+                // try again if receiver hasn't started
+                while(wait == 1) {
+                    if (!client_chans_map[key_name]->send(resp)) {
+                        std::cerr << __func__ << ": send failed.\n";
+                        std::cout << __func__ << ": waiting for receiver...\n";
+
+                        if (!client_chans_map[key_name]->wait_for_recv(1)) {
+                            std::cerr << __func__ << ": wait receiver failed.\n";
+                            is_quit__.store(true, std::memory_order_release);
+                        }
+                    } else {
+                        wait = 0;
+                    }
+                }
+            }
+            client_chans_map[key_name]->disconnect();
         }
         std::cout << __func__ << ": quit...\n";
     }
@@ -133,7 +156,11 @@ namespace {
 int main(int argc, char ** argv) {
     auto exit = [](int) {
         is_quit__.store(true, std::memory_order_release);
-        shared_chan.disconnect();
+        // shared_chan.disconnect();
+        // for(auto x:client_chans_map) {
+        //     client_chans_map[x.first]->disconnect();
+        // }
+        // que__.disconnect();
     };
     ::signal(SIGINT  , exit);
     ::signal(SIGABRT , exit);
@@ -144,7 +171,6 @@ int main(int argc, char ** argv) {
     kvs_server();
     return 0;
 }
-
 
 
 
