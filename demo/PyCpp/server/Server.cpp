@@ -127,28 +127,24 @@ namespace {
             if(client_chans_map.find(key_name) == client_chans_map.end()) {
                 msg_que_t * que__ = new  msg_que_t(key_name.c_str());
                 client_chans_map[key_name] = que__;
+                int suc = client_chans_map[key_name]->reconnect(ipc::sender);
             }
-            
-            if (!client_chans_map[key_name]->reconnect(ipc::sender)) {
-                std::cerr << __func__ << ": connect failed.\n";
-            } else {
-                int wait = 1;
-                // try again if receiver hasn't started
-                while(wait == 1) {
-                    if (!client_chans_map[key_name]->send(resp)) {
-                        std::cerr << __func__ << ": send failed.\n";
-                        std::cout << __func__ << ": waiting for receiver...\n";
 
-                        if (!client_chans_map[key_name]->wait_for_recv(1)) {
-                            std::cerr << __func__ << ": wait receiver failed.\n";
-                            is_quit__.store(true, std::memory_order_release);
-                        }
-                    } else {
-                        wait = 0;
+            int wait = 1;
+            // try again if receiver hasn't started
+            while(wait == 1) {
+                if (!client_chans_map[key_name]->send(resp)) {
+                    std::cerr << __func__ << ": send failed.\n";
+                    std::cout << __func__ << ": waiting for receiver...\n";
+
+                    if (!client_chans_map[key_name]->wait_for_recv(1)) {
+                        std::cerr << __func__ << ": wait receiver failed.\n";
+                        is_quit__.store(true, std::memory_order_release);
                     }
+                } else {
+                    wait = 0;
                 }
-            }
-            client_chans_map[key_name]->disconnect();
+            }            
         }
         std::cout << __func__ << ": quit...\n";
     }
@@ -156,10 +152,10 @@ namespace {
 int main(int argc, char ** argv) {
     auto exit = [](int) {
         is_quit__.store(true, std::memory_order_release);
-        // shared_chan.disconnect();
-        // for(auto x:client_chans_map) {
-        //     client_chans_map[x.first]->disconnect();
-        // }
+        shared_chan.disconnect();
+        for(auto x:client_chans_map) {
+            client_chans_map[x.first]->disconnect();
+        }
         // que__.disconnect();
     };
     ::signal(SIGINT  , exit);
