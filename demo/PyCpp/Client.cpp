@@ -64,31 +64,29 @@ namespace ipc {
         if(client_chans_map.find(key_name) == client_chans_map.end()) {
                 msg_que_t * que__ = new  msg_que_t(key_name.c_str());
                 client_chans_map[key_name] = que__;
-                que__->disconnect();
+                int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
         }
-        int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
-
+        
         while (!shared_chan.send(req)) {
             // waiting for connection
             shared_chan.wait_for_recv(2);
         }
 
         auto dd = client_chans_map[key_name]->recv();
-        client_chans_map[key_name]->disconnect();
         auto str = static_cast<char*>(dd.data());
         
         // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
         if (str == nullptr) {
-            std::cout << "Ack error" << std::endl;
-            return Py_None;
+            // std::cout << "Ack error" << std::endl;
+            return Py_BuildValue("i", 1);
         }
         if (client_id != (int) str[0]){
-            std::cout << "Not my ack" << std::endl;
-            return Py_None;
+            // std::cout << "Not my ack" << std::endl;
+            return Py_BuildValue("i", 2);
         }  
         if (str[1] != req_id) {
-            std::cout << "request id doesn't match" << std::endl;
-            return Py_None;
+            // std::cout << "request id doesn't match" << std::endl;
+            return Py_BuildValue("i", 3);
         }
         auto size_len = stoi(string(str + 3));
         auto shm_id = acquire(key_name.c_str(), size_len, open);
@@ -127,10 +125,9 @@ namespace ipc {
         if(client_chans_map.find(key_name) == client_chans_map.end()) {
                 msg_que_t * que__ = new  msg_que_t(key_name.c_str());
                 client_chans_map[key_name] = que__;
-                que__->disconnect();
+                int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
         }
-        int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
-
+        
         while (!shared_chan.send(req)) {
             // waiting for connection
             shared_chan.wait_for_recv(2);
@@ -138,22 +135,21 @@ namespace ipc {
         auto connection_stamp = std::chrono::system_clock::now();
         
         auto dd = client_chans_map[key_name]->recv();
-        client_chans_map[key_name]->disconnect();
         auto str = static_cast<char*>(dd.data());
         auto receive_stamp = std::chrono::system_clock::now();
         
         // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
         if (str == nullptr) {
-            std::cout << "Ack error" << std::endl;
-            return Py_None;
+            // std::cout << "Ack error" << std::endl;
+            return Py_BuildValue("i", 1);
         }
         if (client_id != (int) str[0]){
-            std::cout << "Not my ack" << std::endl;
-            return Py_None;
+            // std::cout << "Not my ack" << std::endl;
+            return Py_BuildValue("i", 2);
         }  
         if (str[1] != req_id) {
-            std::cout << "request id doesn't match" << std::endl;
-            return Py_None;
+            // std::cout << "request id doesn't match" << std::endl;
+            return Py_BuildValue("i", 3);
         }
         
         auto size_len = stoi(string(str + 3));
@@ -172,7 +168,6 @@ namespace ipc {
         auto getsize_time = std::chrono::duration_cast<std::chrono::microseconds>(getsize_stamp - receive_stamp).count();
         auto openshm_time = std::chrono::duration_cast<std::chrono::microseconds>(openshm_stamp - getsize_stamp).count();
         auto trans_time = std::chrono::duration_cast<std::chrono::microseconds>(trans_stamp - openshm_stamp).count();
-        std::cout << "----Receive Get" << std::endl;
         std::cout << "ready time                                     " << ready_time << " us\n";
         std::cout << "connection time                                " << conn_time << " us\n";
         std::cout << "receive message from server using              " << receive_time << " us\n";
@@ -253,9 +248,8 @@ namespace ipc {
         if(client_chans_map.find(key_name) == client_chans_map.end()) {
                 msg_que_t * que__ = new  msg_que_t(key_name.c_str());
                 client_chans_map[key_name] = que__;
-                que__->disconnect();
+                int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
         }
-        int suc = client_chans_map[key_name]->reconnect(ipc::receiver);
 
         while (!shared_chan.send(req)) {
             // waiting for connection
@@ -263,27 +257,34 @@ namespace ipc {
         }
         
         auto dd = client_chans_map[key_name]->recv();
-        client_chans_map[key_name]->disconnect();
         auto str = static_cast<char*>(dd.data());
 
         // response address (1 byte) | request id (1 byte) | is_success (1 byte) | optional value
         if (str == nullptr) {
-            std::cout << "Ack error" << std::endl;
-            return Py_None;
+            // std::cout << "Ack error" << std::endl;
+            return Py_BuildValue("i", 1);;
         }
         if (client_id != (int) str[0]){
-            std::cout << "Not my ack" << std::endl;
-            return Py_None;
+            // std::cout << "Not my ack" << std::endl;
+            return Py_BuildValue("i", 2);;
         }  
         if (str[1] != req_id) {
-            std::cout << "request id doesn't match" << std::endl;
-            return Py_None;
+            // std::cout << "request id doesn't match" << std::endl;
+            return Py_BuildValue("i", 3);
         }
-        std::cout << "----Receive Put" << std::endl;
-        return Py_None;
+        // std::cout << "----Receive Put" << std::endl;
+        return Py_BuildValue("i", 0);
             
     }
 
+    PyObject* WrappQuit(PyObject* self, PyObject *args)
+    {
+        shared_chan.disconnect();
+        for(auto x:client_chans_map) {
+            client_chans_map[x.first]->disconnect();
+        }
+        return Py_None;
+    }
     
     static PyMethodDef client_methods[] = {
     {"kvs_free", WrappFree, METH_VARARGS},
@@ -292,6 +293,7 @@ namespace ipc {
     {"kvs_GetNp", WrappGetNp, METH_VARARGS},
     {"kvs_ShmPtr_btArray", WrappShmBt, METH_VARARGS},
     {"kvs_GetBt", WrappGetBt, METH_VARARGS},
+    {"kvs_quit", WrappQuit, METH_VARARGS},
     {NULL, NULL}
     };
 
